@@ -130,6 +130,69 @@ h3 {
   color: var(--text-soft);
 }
 
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.brand-name,
+.brand-subtitle {
+  margin: 0;
+}
+
+.brand-name {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-subtitle {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.logo-orbit {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(210, 91, 45, 0.1), rgba(15, 118, 110, 0.18));
+}
+
+.logo-core,
+.logo-ring {
+  position: absolute;
+  inset: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.logo-core {
+  width: 14px;
+  height: 14px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  box-shadow: 0 0 0 8px rgba(210, 91, 45, 0.12);
+}
+
+.logo-ring {
+  border: 2px solid rgba(15, 118, 110, 0.34);
+}
+
+.logo-ring-one {
+  width: 34px;
+  height: 34px;
+}
+
+.logo-ring-two {
+  width: 50px;
+  height: 50px;
+  border-style: dashed;
+  animation: spin 12s linear infinite;
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -288,6 +351,11 @@ h3 {
   gap: 10px;
 }
 
+.filter-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .chip {
   display: inline-flex;
   gap: 10px;
@@ -308,6 +376,10 @@ h3 {
 
 .chip.is-active strong {
   color: #fce7d7;
+}
+
+.favorite-chip {
+  min-width: 148px;
 }
 
 .results-bar {
@@ -344,6 +416,38 @@ h3 {
 .prompt-card:hover {
   border-color: rgba(210, 91, 45, 0.3);
   box-shadow: 0 18px 35px rgba(110, 73, 38, 0.08);
+}
+
+.card-actions,
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ghost-button-small,
+.favorite-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.favorite-button.is-active {
+  background: linear-gradient(135deg, rgba(210, 91, 45, 0.16), rgba(159, 61, 26, 0.16));
+  border-color: rgba(210, 91, 45, 0.28);
+  color: var(--accent-strong);
 }
 
 .card-topline,
@@ -416,6 +520,10 @@ h3 {
   margin: 16px 0 0;
 }
 
+.dialog-actions {
+  margin-top: 18px;
+}
+
 .dialog-grid {
   display: grid;
   gap: 20px;
@@ -438,6 +546,28 @@ h3 {
   color: var(--text);
 }
 
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 40;
+  padding: 12px 16px;
+  border-radius: 999px;
+  background: rgba(31, 41, 55, 0.92);
+  color: #fffaf1;
+  transform: translate(-50%, 18px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -447,6 +577,16 @@ h3 {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
   }
 }
 
@@ -464,5 +604,73 @@ h3 {
   .tips-panel,
   .controls-panel {
     padding: 22px;
+  }
+
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card-actions,
+  .dialog-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .toast {
+    width: calc(100% - 24px);
+    text-align: center;
+  }
+}
+
+@media (max-width: 560px) {
+  h1 {
+    max-width: 8ch;
+    font-size: clamp(2.6rem, 14vw, 4rem);
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .hero-panel .stat-card:last-child {
+    grid-column: span 2;
+  }
+
+  .hero-actions,
+  .card-actions,
+  .dialog-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .primary-button,
+  .secondary-link,
+  .ghost-button,
+  .ghost-button-small,
+  .favorite-button,
+  .chip {
+    width: 100%;
+  }
+
+  .logo-orbit {
+    width: 48px;
+    height: 48px;
+  }
+
+  .brand-mark {
+    gap: 12px;
   }
 }

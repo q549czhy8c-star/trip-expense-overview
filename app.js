@@ -1,13 +1,18 @@
+const FAVORITES_KEY = "prompt-atlas-favorites";
+
 const state = {
   language: "en",
   search: "",
   category: "all",
   selectedId: null,
+  favoritesOnly: false,
+  favorites: loadFavorites(),
 };
 
 const languageToggle = document.querySelector("#languageToggle");
 const categoryCount = document.querySelector("#categoryCount");
 const promptCount = document.querySelector("#promptCount");
+const favoriteCount = document.querySelector("#favoriteCount");
 const tipsGrid = document.querySelector("#tipsGrid");
 const searchInput = document.querySelector("#searchInput");
 const categoryFilters = document.querySelector("#categoryFilters");
@@ -18,16 +23,78 @@ const dialogContent = document.querySelector("#dialogContent");
 const tipsHeading = document.querySelector("#tipsHeading");
 const libraryHeading = document.querySelector("#libraryHeading");
 const searchLabel = document.querySelector("#searchLabel");
+const favoritesToggle = document.querySelector("#favoritesToggle");
+const favoritesLabel = document.querySelector("#favoritesLabel");
+const toast = document.querySelector("#toast");
 
 const categoryMap = new Map(
   promptAtlasData.categories.map((category) => [category.id, category])
 );
 
+function loadFavorites() {
+  try {
+    const raw = window.localStorage.getItem(FAVORITES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveFavorites() {
+  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(state.favorites));
+}
+
 function textFor(item, key) {
   return state.language === "zh" && item[`${key}Zh`] ? item[`${key}Zh`] : item[key];
 }
 
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.add("is-visible");
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.classList.remove("is-visible");
+  }, 1800);
+}
+
+function isFavorite(cardId) {
+  return state.favorites.includes(cardId);
+}
+
+function toggleFavorite(cardId) {
+  if (isFavorite(cardId)) {
+    state.favorites = state.favorites.filter((id) => id !== cardId);
+    showToast(state.language === "zh" ? "已取消收藏" : "Removed from favorites");
+  } else {
+    state.favorites = [...state.favorites, cardId];
+    showToast(state.language === "zh" ? "已加入收藏" : "Saved to favorites");
+  }
+  saveFavorites();
+  render();
+  if (state.selectedId === cardId && detailDialog.open) {
+    renderDialog();
+  }
+}
+
+async function copyPrompt(cardId) {
+  const card = promptAtlasData.cards.find((item) => item.id === cardId);
+  if (!card) {
+    return;
+  }
+
+  const promptText = textFor(card, "prompt");
+
+  try {
+    await navigator.clipboard.writeText(promptText);
+    showToast(state.language === "zh" ? "提示詞已複製" : "Prompt copied");
+  } catch {
+    showToast(state.language === "zh" ? "無法複製提示詞" : "Could not copy prompt");
+  }
+}
+
 function getCardSearchBlob(card) {
+  const category = categoryMap.get(card.category);
   return [
     card.title,
     card.titleZh,
@@ -36,6 +103,8 @@ function getCardSearchBlob(card) {
     card.prompt,
     card.promptZh,
     card.category,
+    category?.name,
+    category?.nameZh,
     ...card.tools,
     ...(card.keywords || []),
   ]
@@ -50,13 +119,15 @@ function filteredCards() {
     const matchesCategory =
       state.category === "all" || card.category === state.category;
     const matchesSearch = !query || getCardSearchBlob(card).includes(query);
-    return matchesCategory && matchesSearch;
+    const matchesFavorites = !state.favoritesOnly || isFavorite(card.id);
+    return matchesCategory && matchesSearch && matchesFavorites;
   });
 }
 
 function renderStats() {
   categoryCount.textContent = promptAtlasData.categories.length - 1;
   promptCount.textContent = promptAtlasData.cards.length;
+  favoriteCount.textContent = state.favorites.length;
 }
 
 function renderTips() {
@@ -83,6 +154,11 @@ function renderTips() {
 function renderFilters() {
   const allLabel = state.language === "zh" ? "全部分類" : "All categories";
   const allCount = promptAtlasData.cards.length;
+
+  favoritesLabel.textContent =
+    state.language === "zh" ? "只看收藏" : "Favorites only";
+  favoritesToggle.classList.toggle("is-active", state.favoritesOnly);
+  favoritesToggle.querySelector("strong").textContent = state.favorites.length;
 
   const filterItems = [
     `
@@ -124,6 +200,42 @@ function renderFilters() {
   });
 }
 
+function resultsText(cards, selectedCategory) {
+  if (cards.length === 0) {
+    return state.language === "zh"
+      ? "找不到符合條件的內容，試試較短的關鍵字。"
+      : "No matching results yet. Try a shorter or broader search.";
+  }
+
+  const resultPrefix = state.language === "zh" ? "目前顯示" : "Showing";
+  const resultSuffix = state.language === "zh" ? "張提示卡" : "prompt cards";
+  const categoryLabel = selectedCategory ? textFor(selectedCategory, "name") : "";
+  const favoritesSuffix =
+    state.favoritesOnly && state.language === "zh"
+      ? " · 收藏"
+      : state.favoritesOnly
+        ? " · favorites"
+        : "";
+
+  return selectedCategory
+    ? `${resultPrefix} ${cards.length} ${resultSuffix} · ${categoryLabel}${favoritesSuffix}`
+    : `${resultPrefix} ${cards.length} ${resultSuffix}${favoritesSuffix}`;
+}
+
+function actionLabel(cardId) {
+  return isFavorite(cardId)
+    ? state.language === "zh"
+      ? "已收藏"
+      : "Saved"
+    : state.language === "zh"
+      ? "收藏"
+      : "Save";
+}
+
+function favoriteIcon(cardId) {
+  return isFavorite(cardId) ? "★" : "☆";
+}
+
 function renderCards() {
   libraryHeading.textContent =
     state.language === "zh"
@@ -142,34 +254,23 @@ function renderCards() {
   const selectedCategory =
     state.category === "all" ? null : categoryMap.get(state.category);
 
+  resultsLabel.textContent = resultsText(cards, selectedCategory);
+
   if (cards.length === 0) {
-    resultsLabel.textContent =
-      state.language === "zh"
-        ? "找不到符合條件的內容，試試較短的關鍵字。"
-        : "No matching results yet. Try a shorter or broader search.";
     cardsGrid.innerHTML = `
       <div class="empty-state">
         <h3>${state.language === "zh" ? "未找到結果" : "No results found"}</h3>
         <p>
           ${
             state.language === "zh"
-              ? "你可以切換分類、清除搜尋，或者用英文與中文詞語再試一次。"
-              : "Try switching categories, clearing the search box, or searching in English or Chinese."
+              ? "你可以切換分類、清除搜尋，或者關閉收藏篩選再試一次。"
+              : "Try switching categories, clearing the search box, or turning off the favorites filter."
           }
         </p>
       </div>
     `;
     return;
   }
-
-  const resultPrefix =
-    state.language === "zh" ? "目前顯示" : "Showing";
-  const resultSuffix =
-    state.language === "zh" ? "張提示卡" : "prompt cards";
-  const categoryLabel = selectedCategory ? textFor(selectedCategory, "name") : "";
-  resultsLabel.textContent = selectedCategory
-    ? `${resultPrefix} ${cards.length} ${resultSuffix} · ${categoryLabel}`
-    : `${resultPrefix} ${cards.length} ${resultSuffix}`;
 
   cardsGrid.innerHTML = cards
     .map((card) => {
@@ -187,9 +288,15 @@ function renderCards() {
               .map((tool) => `<span class="tool-pill">${tool}</span>`)
               .join("")}
           </div>
-          <button class="ghost-button" type="button">
-            ${state.language === "zh" ? "查看詳情" : "Open details"}
-          </button>
+          <div class="card-actions">
+            <button class="ghost-button ghost-button-small" type="button" data-copy-id="${card.id}">
+              ${state.language === "zh" ? "複製提示詞" : "Copy prompt"}
+            </button>
+            <button class="favorite-button ${isFavorite(card.id) ? "is-active" : ""}" type="button" data-favorite-id="${card.id}">
+              <span aria-hidden="true">${favoriteIcon(card.id)}</span>
+              <span>${actionLabel(card.id)}</span>
+            </button>
+          </div>
         </article>
       `;
     })
@@ -202,12 +309,35 @@ function renderCards() {
       detailDialog.showModal();
     };
 
-    cardNode.addEventListener("click", openCard);
+    cardNode.addEventListener("click", (event) => {
+      if (event.target.closest("[data-copy-id], [data-favorite-id]")) {
+        return;
+      }
+      openCard();
+    });
+
     cardNode.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
+        if (event.target.closest("[data-copy-id], [data-favorite-id]")) {
+          return;
+        }
         event.preventDefault();
         openCard();
       }
+    });
+  });
+
+  cardsGrid.querySelectorAll("[data-copy-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      copyPrompt(button.dataset.copyId);
+    });
+  });
+
+  cardsGrid.querySelectorAll("[data-favorite-id]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleFavorite(button.dataset.favoriteId);
     });
   });
 }
@@ -227,6 +357,15 @@ function renderDialog() {
     </div>
     <h2>${textFor(card, "title")}</h2>
     <p class="dialog-summary">${textFor(card, "summary")}</p>
+    <div class="dialog-actions">
+      <button class="ghost-button" type="button" data-copy-id="${card.id}">
+        ${state.language === "zh" ? "複製提示詞" : "Copy prompt"}
+      </button>
+      <button class="favorite-button ${isFavorite(card.id) ? "is-active" : ""}" type="button" data-favorite-id="${card.id}">
+        <span aria-hidden="true">${favoriteIcon(card.id)}</span>
+        <span>${actionLabel(card.id)}</span>
+      </button>
+    </div>
     <div class="dialog-grid">
       <section>
         <h3>${state.language === "zh" ? "示例提示詞" : "Prompt template"}</h3>
@@ -248,6 +387,13 @@ function renderDialog() {
       </section>
     </div>
   `;
+
+  dialogContent.querySelector("[data-copy-id]").addEventListener("click", () => {
+    copyPrompt(card.id);
+  });
+  dialogContent.querySelector("[data-favorite-id]").addEventListener("click", () => {
+    toggleFavorite(card.id);
+  });
 }
 
 function renderLanguage() {
@@ -262,11 +408,20 @@ function render() {
   renderTips();
   renderFilters();
   renderCards();
+  if (detailDialog.open && state.selectedId) {
+    renderDialog();
+  }
 }
 
 languageToggle.addEventListener("click", () => {
   state.language = state.language === "en" ? "zh" : "en";
   render();
+});
+
+favoritesToggle.addEventListener("click", () => {
+  state.favoritesOnly = !state.favoritesOnly;
+  renderCards();
+  renderFilters();
 });
 
 searchInput.addEventListener("input", (event) => {

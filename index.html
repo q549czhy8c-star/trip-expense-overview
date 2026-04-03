@@ -20,6 +20,17 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
+          <div class="brand-mark">
+            <div class="logo-orbit" aria-hidden="true">
+              <span class="logo-core"></span>
+              <span class="logo-ring logo-ring-one"></span>
+              <span class="logo-ring logo-ring-two"></span>
+            </div>
+            <div>
+              <p class="brand-name">Prompt Atlas</p>
+              <p class="brand-subtitle">Workspace Edition</p>
+            </div>
+          </div>
           <p class="eyebrow">Inspired by the October 2024 Workspace prompt guide</p>
           <h1>Prompt Atlas</h1>
           <p class="hero-text">
@@ -43,8 +54,8 @@
             <strong id="promptCount">0</strong>
           </div>
           <div class="stat-card">
-            <span class="stat-label">Core modes</span>
-            <strong>Filter / Search / Translate</strong>
+            <span class="stat-label">Saved prompts</span>
+            <strong id="favoriteCount">0</strong>
           </div>
         </aside>
       </header>
@@ -75,6 +86,13 @@
               />
             </label>
 
+            <div class="filter-toolbar">
+              <button id="favoritesToggle" class="chip favorite-chip" type="button">
+                <span id="favoritesLabel">Favorites only</span>
+                <strong>0</strong>
+              </button>
+            </div>
+
             <div class="filter-group">
               <div id="categoryFilters" class="filter-chips"></div>
             </div>
@@ -88,6 +106,8 @@
         </section>
       </main>
     </div>
+
+    <div id="toast" class="toast" aria-live="polite"></div>
 
     <dialog id="detailDialog" class="detail-dialog">
       <form method="dialog" class="dialog-shell">

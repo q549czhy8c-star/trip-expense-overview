@@ -8,6 +8,13 @@ It includes three requested features:
 - Search across English and Chinese content
 - Chinese translation and full language toggle
 
+It now also includes:
+
+- 87 adapted prompt cards covering much more of the PDF's role-based use cases
+- Favorites saved in browser storage
+- One-tap prompt copy actions
+- Refined mobile layout and custom Prompt Atlas branding
+
 ## Files
 
 - `index.html`: app shell
