@@ -1,35 +1,30 @@
-# Prompt Atlas for Workspace
+# 遊玩支出總覽
 
-Prompt Atlas is a static bilingual web app inspired by the October 2024 Gemini for Google Workspace prompt guide.
+純前端多人分帳工具，適合旅遊、遊玩或聚會後快速整理支出。
 
-It includes three requested features:
+## 功能
 
-- Category browsing across work roles
-- Search across English and Chinese content
-- Chinese translation and full language toggle
+- 新增與管理參與人
+- 為每筆支出指定先支付的人
+- 支援平均分攤或自訂金額分攤
+- 支援指定某人替其他人代付
+- 以 HKD 統一計算總額與淨額
+- 內建 RMB -> HKD 匯率轉換
+- 顯示「誰欠誰」明細與最佳化還款建議
+- 匯出 Excel 可開啟的總覽表格
 
-It now also includes:
+## 檔案
 
-- exact PDF source cards covering pages 7 through 57
-- Favorites saved in browser storage
-- One-tap prompt copy actions
-- Refined mobile layout and custom Prompt Atlas branding
+- `index.html`: 頁面結構
+- `styles.css`: 介面樣式
+- `app.js`: 狀態管理、分帳計算、匯出功能
 
-## Files
+## 本地開啟
 
-- `index.html`: app shell
-- `styles.css`: visual design and responsive layout
-- `data.js`: structured bilingual prompt library
-- `app.js`: search, filter, translation toggle, and detail modal
-
-## Local preview
+直接打開 `index.html` 即可使用，或用簡單靜態伺服器預覽：
 
 ```bash
 python3 -m http.server 4173
 ```
 
-Then open `http://localhost:4173`.
-
-## Deploy to GitHub Pages
-
-Because this is a static site, it can be deployed directly from the repository root with GitHub Pages.
+然後開啟 `http://localhost:4173`。

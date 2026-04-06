@@ -1,125 +1,200 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Prompt Atlas for Workspace</title>
+    <title>遊玩支出總覽</title>
     <meta
       name="description"
-      content="A bilingual prompt library inspired by the Gemini for Google Workspace prompt guide, with categories, search, and Chinese translations."
+      content="多人遊玩支出分帳工具，支援平均分攤、指定金額、代付、RMB 轉 HKD 與 Excel 匯出。"
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Source+Serif+4:wght@400;600&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;800&family=DM+Serif+Display&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div class="page-shell">
+    <div class="app-shell">
       <header class="hero">
         <div class="hero-copy">
-          <div class="brand-mark">
-            <div class="logo-orbit" aria-hidden="true">
-              <span class="logo-core"></span>
-              <span class="logo-ring logo-ring-one"></span>
-              <span class="logo-ring logo-ring-two"></span>
-            </div>
-            <div>
-              <p class="brand-name">Prompt Atlas</p>
-              <p class="brand-subtitle">Workspace Edition</p>
-            </div>
-          </div>
-          <p class="eyebrow">Inspired by the October 2024 Workspace prompt guide</p>
-          <h1>Prompt Atlas</h1>
+          <p class="eyebrow">Trip Splitter</p>
+          <h1>遊玩支出總覽</h1>
           <p class="hero-text">
-            An indexed source library for the PDF's original prompt pages,
-            covering pages 7 through 57 across operations, HR, sales,
-            marketing, and leadership.
+            集中管理多人支出、代付關係、RMB/HKD 換算與最終還款建議。
           </p>
           <div class="hero-actions">
-            <button id="languageToggle" class="primary-button" type="button">
-              切換中文
+            <button id="exportButton" class="primary-button" type="button">
+              匯出 Excel 總覽
             </button>
-            <a class="secondary-link" href="#library">Jump to library</a>
+            <button id="resetButton" class="secondary-button" type="button">
+              清空全部資料
+            </button>
           </div>
         </div>
-        <aside class="hero-panel">
-          <div class="stat-card">
-            <span class="stat-label">Libraries</span>
-            <strong id="categoryCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Prompt cards</span>
-            <strong id="promptCount">0</strong>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Saved prompts</span>
-            <strong id="favoriteCount">0</strong>
-          </div>
-        </aside>
+
+        <div class="hero-stats">
+          <article class="stat-card">
+            <span>參與人</span>
+            <strong id="participantCount">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>支出總額</span>
+            <strong id="totalSpent">HK$0.00</strong>
+          </article>
+          <article class="stat-card">
+            <span>支出項目</span>
+            <strong id="expenseCount">0</strong>
+          </article>
+          <article class="stat-card">
+            <span>建議還款</span>
+            <strong id="transferCount">0</strong>
+          </article>
+        </div>
       </header>
 
-      <main id="library" class="layout">
-        <section class="tips-panel">
-          <div class="section-heading">
-            <p class="eyebrow">Prompt foundations</p>
-            <h2 id="tipsHeading">Start with a stronger brief</h2>
+      <main class="dashboard">
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">設定</p>
+              <h2>基本資料</h2>
+            </div>
           </div>
-          <div id="tipsGrid" class="tips-grid"></div>
+
+          <div class="settings-grid">
+            <form id="participantForm" class="stack-form">
+              <label>
+                <span>新增參與人</span>
+                <div class="inline-form">
+                  <input
+                    id="participantName"
+                    type="text"
+                    placeholder="例如：阿明"
+                    maxlength="24"
+                    required
+                  />
+                  <button class="primary-button" type="submit">加入</button>
+                </div>
+              </label>
+            </form>
+
+            <label class="stack-form">
+              <span>預設匯率（1 RMB = ? HKD）</span>
+              <input id="defaultRate" type="number" min="0.01" step="0.001" />
+              <small>新增人民幣支出時會自動帶入，可再逐項調整。</small>
+            </label>
+          </div>
+
+          <div id="participantList" class="participant-list"></div>
         </section>
 
-        <section class="controls-panel">
-          <div class="section-heading">
-            <p class="eyebrow">Explore the guide</p>
-            <h2 id="libraryHeading">Browse by role or workstream</h2>
-          </div>
-
-          <div class="controls">
-            <label class="search-field">
-              <span id="searchLabel">Search prompts, categories, apps, or Chinese text</span>
-              <input
-                id="searchInput"
-                type="search"
-                placeholder="Search prompt ideas..."
-                autocomplete="off"
-              />
-            </label>
-
-            <div class="filter-toolbar">
-              <button id="favoritesToggle" class="chip favorite-chip" type="button">
-                <span id="favoritesLabel">Favorites only</span>
-                <strong>0</strong>
-              </button>
-            </div>
-
-            <div class="filter-group">
-              <div id="categoryFilters" class="filter-chips"></div>
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">新增支出</p>
+              <h2>建立項目</h2>
             </div>
           </div>
 
-          <div class="results-bar">
-            <p id="resultsLabel">Showing all prompt cards</p>
+          <form id="expenseForm" class="expense-form">
+            <div class="form-grid">
+              <label>
+                <span>項目名稱</span>
+                <input id="expenseTitle" type="text" placeholder="例如：門票" required />
+              </label>
+
+              <label>
+                <span>金額</span>
+                <input id="expenseAmount" type="number" min="0.01" step="0.01" required />
+              </label>
+
+              <label>
+                <span>貨幣</span>
+                <select id="expenseCurrency">
+                  <option value="HKD">HKD</option>
+                  <option value="RMB">RMB</option>
+                </select>
+              </label>
+
+              <label>
+                <span>支付人</span>
+                <select id="expensePayer" required></select>
+              </label>
+
+              <label>
+                <span>分攤方式</span>
+                <select id="splitMode">
+                  <option value="equal">平均分攤</option>
+                  <option value="custom">指定金額</option>
+                </select>
+              </label>
+
+              <label>
+                <span>本項匯率（RMB 轉 HKD）</span>
+                <input id="expenseRate" type="number" min="0.01" step="0.001" />
+              </label>
+            </div>
+
+            <div class="allocation-section">
+              <div class="allocation-header">
+                <div>
+                  <h3>參與分攤與代付設定</h3>
+                  <p>可選擇誰有參與此項目，以及是否由其他人代付。</p>
+                </div>
+              </div>
+              <div id="allocationRows" class="allocation-rows"></div>
+            </div>
+
+            <div class="form-footer">
+              <p id="allocationSummary" class="helper-text"></p>
+              <button class="primary-button" type="submit">新增支出項目</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">明細</p>
+              <h2>支出列表</h2>
+            </div>
+          </div>
+          <div id="expenseList" class="expense-list"></div>
+        </section>
+
+        <section class="panel summary-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">結果</p>
+              <h2>統計與還款建議</h2>
+            </div>
           </div>
 
-          <div id="cardsGrid" class="cards-grid"></div>
+          <div class="summary-grid">
+            <div>
+              <h3>每人淨額</h3>
+              <div id="balanceList" class="summary-list"></div>
+            </div>
+
+            <div>
+              <h3>誰欠誰</h3>
+              <div id="owesList" class="summary-list"></div>
+            </div>
+
+            <div>
+              <h3>最佳化還款建議</h3>
+              <div id="settlementList" class="summary-list"></div>
+            </div>
+          </div>
         </section>
       </main>
     </div>
 
     <div id="toast" class="toast" aria-live="polite"></div>
 
-    <dialog id="detailDialog" class="detail-dialog">
-      <form method="dialog" class="dialog-shell">
-        <button class="dialog-close" type="submit" aria-label="Close prompt details">
-          Close
-        </button>
-        <div id="dialogContent"></div>
-      </form>
-    </dialog>
-
-    <script src="./data.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

@@ -1,52 +1,69 @@
-const FAVORITES_KEY = "prompt-atlas-favorites";
+const STORAGE_KEY = "trip-splitter-state-v1";
 
-const state = {
-  language: "en",
-  search: "",
-  category: "all",
-  selectedId: null,
-  favoritesOnly: false,
-  favorites: loadFavorites(),
-};
+const state = loadState();
 
-const languageToggle = document.querySelector("#languageToggle");
-const categoryCount = document.querySelector("#categoryCount");
-const promptCount = document.querySelector("#promptCount");
-const favoriteCount = document.querySelector("#favoriteCount");
-const tipsGrid = document.querySelector("#tipsGrid");
-const searchInput = document.querySelector("#searchInput");
-const categoryFilters = document.querySelector("#categoryFilters");
-const cardsGrid = document.querySelector("#cardsGrid");
-const resultsLabel = document.querySelector("#resultsLabel");
-const detailDialog = document.querySelector("#detailDialog");
-const dialogContent = document.querySelector("#dialogContent");
-const tipsHeading = document.querySelector("#tipsHeading");
-const libraryHeading = document.querySelector("#libraryHeading");
-const searchLabel = document.querySelector("#searchLabel");
-const favoritesToggle = document.querySelector("#favoritesToggle");
-const favoritesLabel = document.querySelector("#favoritesLabel");
+const participantCount = document.querySelector("#participantCount");
+const totalSpent = document.querySelector("#totalSpent");
+const expenseCount = document.querySelector("#expenseCount");
+const transferCount = document.querySelector("#transferCount");
+const participantForm = document.querySelector("#participantForm");
+const participantNameInput = document.querySelector("#participantName");
+const participantList = document.querySelector("#participantList");
+const defaultRateInput = document.querySelector("#defaultRate");
+const expenseForm = document.querySelector("#expenseForm");
+const expenseTitleInput = document.querySelector("#expenseTitle");
+const expenseAmountInput = document.querySelector("#expenseAmount");
+const expenseCurrencyInput = document.querySelector("#expenseCurrency");
+const expensePayerInput = document.querySelector("#expensePayer");
+const splitModeInput = document.querySelector("#splitMode");
+const expenseRateInput = document.querySelector("#expenseRate");
+const allocationRows = document.querySelector("#allocationRows");
+const allocationSummary = document.querySelector("#allocationSummary");
+const expenseList = document.querySelector("#expenseList");
+const balanceList = document.querySelector("#balanceList");
+const owesList = document.querySelector("#owesList");
+const settlementList = document.querySelector("#settlementList");
+const exportButton = document.querySelector("#exportButton");
+const resetButton = document.querySelector("#resetButton");
 const toast = document.querySelector("#toast");
 
-const categoryMap = new Map(
-  promptAtlasData.categories.map((category) => [category.id, category])
-);
-
-function loadFavorites() {
+function loadState() {
   try {
-    const raw = window.localStorage.getItem(FAVORITES_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && Array.isArray(parsed.participants) && Array.isArray(parsed.expenses)) {
+      return {
+        participants: parsed.participants,
+        expenses: parsed.expenses,
+        defaultRate: Number(parsed.defaultRate) > 0 ? Number(parsed.defaultRate) : 1.08,
+      };
+    }
   } catch {
-    return [];
+    // Ignore malformed local data and fall back to defaults.
   }
+
+  return {
+    participants: [],
+    expenses: [],
+    defaultRate: 1.08,
+  };
 }
 
-function saveFavorites() {
-  window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(state.favorites));
+function saveState() {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function textFor(item, key) {
-  return state.language === "zh" && item[`${key}Zh`] ? item[`${key}Zh`] : item[key];
+function uid(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 function showToast(message) {
@@ -55,391 +72,757 @@ function showToast(message) {
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(() => {
     toast.classList.remove("is-visible");
-  }, 1800);
+  }, 2000);
 }
 
-function isFavorite(cardId) {
-  return state.favorites.includes(cardId);
+function formatCurrencyFromCents(cents) {
+  return new Intl.NumberFormat("zh-HK", {
+    style: "currency",
+    currency: "HKD",
+    minimumFractionDigits: 2,
+  }).format(cents / 100);
 }
 
-function toggleFavorite(cardId) {
-  if (isFavorite(cardId)) {
-    state.favorites = state.favorites.filter((id) => id !== cardId);
-    showToast(state.language === "zh" ? "已取消收藏" : "Removed from favorites");
-  } else {
-    state.favorites = [...state.favorites, cardId];
-    showToast(state.language === "zh" ? "已加入收藏" : "Saved to favorites");
+function formatCurrencyValue(value, currency) {
+  return new Intl.NumberFormat("zh-HK", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
+function toCents(amount) {
+  return Math.round(Number(amount || 0) * 100);
+}
+
+function centsToNumber(cents) {
+  return cents / 100;
+}
+
+function allocateEvenly(totalCents, count) {
+  if (count <= 0) {
+    return [];
   }
-  saveFavorites();
-  render();
-  if (state.selectedId === cardId && detailDialog.open) {
-    renderDialog();
-  }
+  const base = Math.floor(totalCents / count);
+  const remainder = totalCents - base * count;
+  return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0));
 }
 
-async function copyPrompt(cardId) {
-  const card = promptAtlasData.cards.find((item) => item.id === cardId);
-  if (!card) {
-    return;
-  }
-
-  const promptText = textFor(card, "prompt");
-
-  try {
-    await navigator.clipboard.writeText(promptText);
-    showToast(state.language === "zh" ? "提示詞已複製" : "Prompt copied");
-  } catch {
-    showToast(state.language === "zh" ? "無法複製提示詞" : "Could not copy prompt");
-  }
+function buildParticipantMap() {
+  return new Map(state.participants.map((participant) => [participant.id, participant]));
 }
 
-function getCardSearchBlob(card) {
-  const category = categoryMap.get(card.category);
-  return [
-    card.title,
-    card.titleZh,
-    card.summary,
-    card.summaryZh,
-    card.prompt,
-    card.promptZh,
-    card.category,
-    category?.name,
-    category?.nameZh,
-    ...card.tools,
-    ...(card.keywords || []),
-  ]
-    .join(" ")
-    .toLowerCase();
+function getParticipantName(participantId) {
+  return buildParticipantMap().get(participantId)?.name || "未知成員";
 }
 
-function filteredCards() {
-  const query = state.search.trim().toLowerCase();
-
-  return promptAtlasData.cards.filter((card) => {
-    const matchesCategory =
-      state.category === "all" || card.category === state.category;
-    const matchesSearch = !query || getCardSearchBlob(card).includes(query);
-    const matchesFavorites = !state.favoritesOnly || isFavorite(card.id);
-    return matchesCategory && matchesSearch && matchesFavorites;
+function getActiveAllocationDraft() {
+  const selectedParticipants = state.participants.map((participant) => {
+    const includeNode = allocationRows.querySelector(`[data-include-id="${participant.id}"]`);
+    const shareNode = allocationRows.querySelector(`[data-share-id="${participant.id}"]`);
+    const proxyNode = allocationRows.querySelector(`[data-proxy-id="${participant.id}"]`);
+    return {
+      participantId: participant.id,
+      included: includeNode ? includeNode.checked : true,
+      share: Number(shareNode?.value || 0),
+      proxyId: proxyNode?.value || participant.id,
+    };
   });
+  return selectedParticipants;
 }
 
-function renderStats() {
-  categoryCount.textContent = promptAtlasData.categories.length - 1;
-  promptCount.textContent = promptAtlasData.cards.length;
-  favoriteCount.textContent = state.favorites.length;
+function syncRateInputState() {
+  const isRmb = expenseCurrencyInput.value === "RMB";
+  expenseRateInput.disabled = !isRmb;
+  if (!isRmb) {
+    expenseRateInput.value = "1";
+  } else if (!Number(expenseRateInput.value)) {
+    expenseRateInput.value = String(state.defaultRate);
+  }
 }
 
-function renderTips() {
-  tipsHeading.textContent =
-    state.language === "zh" ? "先看原文結構" : "Start with the source structure";
+function renderParticipantControls() {
+  const currentPayerId = expensePayerInput.value;
+  const options = state.participants
+    .map((participant) => `<option value="${participant.id}">${escapeHtml(participant.name)}</option>`)
+    .join("");
 
-  tipsGrid.innerHTML = promptAtlasData.tips
+  expensePayerInput.innerHTML = options;
+  if (currentPayerId && state.participants.some((participant) => participant.id === currentPayerId)) {
+    expensePayerInput.value = currentPayerId;
+  }
+  renderAllocationRows();
+}
+
+function renderParticipants() {
+  participantList.innerHTML = state.participants
     .map(
-      (tip) => `
-        <article class="tip-card">
-          <p class="mini-label">${tip.tools.join(" · ")}</p>
-          <h3>${textFor(tip, "title")}</h3>
-          <p>${textFor(tip, "summary")}</p>
-          <div class="prompt-block">
-            <span>${state.language === "zh" ? "示例寫法" : "Prompt shape"}</span>
-            <p>${textFor(tip, "prompt")}</p>
-          </div>
+      (participant) => `
+        <article class="participant-chip">
+          <strong>${escapeHtml(participant.name)}</strong>
+          <button type="button" data-remove-participant="${participant.id}">移除</button>
         </article>
       `
     )
     .join("");
-}
 
-function renderFilters() {
-  const allLabel = state.language === "zh" ? "全部分類" : "All categories";
-  const allCount = promptAtlasData.cards.length;
-
-  favoritesLabel.textContent =
-    state.language === "zh" ? "只看收藏" : "Favorites only";
-  favoritesToggle.classList.toggle("is-active", state.favoritesOnly);
-  favoritesToggle.querySelector("strong").textContent = state.favorites.length;
-
-  const filterItems = [
-    `
-      <button
-        class="chip ${state.category === "all" ? "is-active" : ""}"
-        type="button"
-        data-category="all"
-      >
-        <span>${allLabel}</span>
-        <strong>${allCount}</strong>
-      </button>
-    `,
-    ...promptAtlasData.categories
-      .filter((category) => category.id !== "fundamentals")
-      .map((category) => {
-        const count = promptAtlasData.cards.filter(
-          (card) => card.category === category.id
-        ).length;
-        return `
-          <button
-            class="chip ${state.category === category.id ? "is-active" : ""}"
-            type="button"
-            data-category="${category.id}"
-          >
-            <span>${textFor(category, "name")}</span>
-            <strong>${count}</strong>
-          </button>
-        `;
-      }),
-  ];
-
-  categoryFilters.innerHTML = filterItems.join("");
-
-  categoryFilters.querySelectorAll("[data-category]").forEach((button) => {
+  participantList.querySelectorAll("[data-remove-participant]").forEach((button) => {
     button.addEventListener("click", () => {
-      state.category = button.dataset.category;
+      const participantId = button.dataset.removeParticipant;
+      const isUsed = state.expenses.some(
+        (expense) =>
+          expense.payerId === participantId ||
+          expense.allocations.some(
+            (allocation) =>
+              allocation.participantId === participantId || allocation.proxyId === participantId
+          )
+      );
+
+      if (isUsed) {
+        showToast("此參與人已出現在支出紀錄中，請先刪除相關支出。");
+        return;
+      }
+
+      state.participants = state.participants.filter((participant) => participant.id !== participantId);
+      saveState();
       render();
     });
   });
 }
 
-function resultsText(cards, selectedCategory) {
-  if (cards.length === 0) {
-    return state.language === "zh"
-      ? "找不到符合條件的內容，試試較短的關鍵字。"
-      : "No matching results yet. Try a shorter or broader search.";
+function renderAllocationRows() {
+  const draft = getActiveAllocationDraft();
+  const draftMap = new Map(draft.map((item) => [item.participantId, item]));
+  const splitMode = splitModeInput.value;
+  const payerId = expensePayerInput.value;
+
+  allocationRows.innerHTML = state.participants
+    .map((participant) => {
+      const current = draftMap.get(participant.id) || {
+        included: true,
+        share: 0,
+        proxyId: participant.id,
+      };
+
+      const proxyOptions = state.participants
+        .map(
+          (candidate) => `
+            <option value="${candidate.id}" ${candidate.id === current.proxyId ? "selected" : ""}>
+              ${escapeHtml(candidate.name)}
+            </option>
+          `
+        )
+        .join("");
+
+      return `
+        <div class="allocation-row">
+          <div class="allocation-person">
+            <input
+              type="checkbox"
+              data-include-id="${participant.id}"
+              ${current.included ? "checked" : ""}
+            />
+            <span>${escapeHtml(participant.name)}${payerId === participant.id ? " · 支付人" : ""}</span>
+          </div>
+
+          <label class="checkbox-wrap">
+            <span>是否分攤</span>
+          </label>
+
+          <label>
+            <span>${splitMode === "custom" ? "指定金額" : "平均分攤"}</span>
+            <input
+              data-share-id="${participant.id}"
+              type="number"
+              min="0"
+              step="0.01"
+              value="${splitMode === "custom" ? current.share || "" : ""}"
+              ${splitMode === "equal" ? "disabled" : ""}
+            />
+          </label>
+
+          <label>
+            <span>由誰代付</span>
+            <select data-proxy-id="${participant.id}">
+              ${proxyOptions}
+            </select>
+          </label>
+        </div>
+      `;
+    })
+    .join("");
+
+  allocationRows.querySelectorAll("[data-include-id], [data-share-id], [data-proxy-id]").forEach((node) => {
+    node.addEventListener("input", updateAllocationSummary);
+    node.addEventListener("change", updateAllocationSummary);
+  });
+
+  updateAllocationSummary();
+}
+
+function parseExpenseDraft() {
+  const title = expenseTitleInput.value.trim();
+  const amount = Number(expenseAmountInput.value);
+  const currency = expenseCurrencyInput.value;
+  const payerId = expensePayerInput.value;
+  const splitMode = splitModeInput.value;
+  const rate = currency === "RMB" ? Number(expenseRateInput.value || state.defaultRate) : 1;
+  const allocations = getActiveAllocationDraft();
+
+  return {
+    title,
+    amount,
+    currency,
+    payerId,
+    splitMode,
+    rate,
+    allocations,
+  };
+}
+
+function validateExpenseDraft(draft) {
+  if (state.participants.length < 2) {
+    return "請先加入至少 2 位參與人。";
+  }
+  if (!draft.title) {
+    return "請輸入支出項目名稱。";
+  }
+  if (!(draft.amount > 0)) {
+    return "支出金額需大於 0。";
+  }
+  if (!draft.payerId) {
+    return "請選擇支付人。";
+  }
+  if (draft.currency === "RMB" && !(draft.rate > 0)) {
+    return "人民幣支出需要有效匯率。";
   }
 
-  const resultPrefix = state.language === "zh" ? "目前顯示" : "Showing";
-  const resultSuffix = state.language === "zh" ? "張提示卡" : "prompt cards";
-  const categoryLabel = selectedCategory ? textFor(selectedCategory, "name") : "";
-  const favoritesSuffix =
-    state.favoritesOnly && state.language === "zh"
-      ? " · 收藏"
-      : state.favoritesOnly
-        ? " · favorites"
-        : "";
+  const included = draft.allocations.filter((allocation) => allocation.included);
+  if (included.length === 0) {
+    return "請至少勾選 1 位要分攤的人。";
+  }
 
-  return selectedCategory
-    ? `${resultPrefix} ${cards.length} ${resultSuffix} · ${categoryLabel}${favoritesSuffix}`
-    : `${resultPrefix} ${cards.length} ${resultSuffix}${favoritesSuffix}`;
+  if (draft.splitMode === "custom") {
+    const totalCustom = included.reduce((sum, allocation) => sum + Number(allocation.share || 0), 0);
+    const delta = Math.abs(totalCustom - draft.amount);
+    if (delta > 0.05) {
+      return "指定金額的總和需要等於此項支出金額。";
+    }
+  }
+
+  return "";
 }
 
-function actionLabel(cardId) {
-  return isFavorite(cardId)
-    ? state.language === "zh"
-      ? "已收藏"
-      : "Saved"
-    : state.language === "zh"
-      ? "收藏"
-      : "Save";
+function computeExpenseBreakdown(expense) {
+  const included = expense.allocations.filter((allocation) => allocation.included);
+  const totalHkdCents = toCents(expense.amount * expense.rate);
+  const shares = new Map();
+
+  if (expense.splitMode === "equal") {
+    const splitCents = allocateEvenly(totalHkdCents, included.length);
+    included.forEach((allocation, index) => {
+      shares.set(allocation.participantId, splitCents[index]);
+    });
+  } else {
+    let assigned = 0;
+    included.forEach((allocation, index) => {
+      const isLast = index === included.length - 1;
+      const converted = toCents(Number(allocation.share || 0) * expense.rate);
+      const value = isLast ? totalHkdCents - assigned : converted;
+      shares.set(allocation.participantId, value);
+      assigned += value;
+    });
+  }
+
+  return {
+    totalHkdCents,
+    included,
+    shares,
+  };
 }
 
-function favoriteIcon(cardId) {
-  return isFavorite(cardId) ? "★" : "☆";
-}
-
-function renderCards() {
-  libraryHeading.textContent =
-    state.language === "zh"
-      ? "按角色或工作情境瀏覽"
-      : "Browse by role or workstream";
-
-  searchLabel.textContent =
-    state.language === "zh"
-      ? "搜尋提示詞、分類、工具或中文關鍵字"
-      : "Search prompts, categories, apps, or Chinese text";
-
-  searchInput.placeholder =
-    state.language === "zh" ? "搜尋提示詞靈感..." : "Search prompt ideas...";
-
-  const cards = filteredCards();
-  const selectedCategory =
-    state.category === "all" ? null : categoryMap.get(state.category);
-
-  resultsLabel.textContent = resultsText(cards, selectedCategory);
-
-  if (cards.length === 0) {
-    cardsGrid.innerHTML = `
-      <div class="empty-state">
-        <h3>${state.language === "zh" ? "未找到結果" : "No results found"}</h3>
-        <p>
-          ${
-            state.language === "zh"
-              ? "你可以切換分類、清除搜尋，或者關閉收藏篩選再試一次。"
-              : "Try switching categories, clearing the search box, or turning off the favorites filter."
-          }
-        </p>
-      </div>
-    `;
+function addPairDebt(pairMap, debtorId, creditorId, cents) {
+  if (!debtorId || !creditorId || debtorId === creditorId || cents <= 0) {
     return;
   }
 
-  cardsGrid.innerHTML = cards
-    .map((card) => {
-      const category = categoryMap.get(card.category);
+  const forwardKey = `${debtorId}|${creditorId}`;
+  const reverseKey = `${creditorId}|${debtorId}`;
+  const reverseAmount = pairMap.get(reverseKey) || 0;
+
+  if (reverseAmount > 0) {
+    if (reverseAmount > cents) {
+      pairMap.set(reverseKey, reverseAmount - cents);
+      return;
+    }
+    pairMap.delete(reverseKey);
+    cents -= reverseAmount;
+  }
+
+  pairMap.set(forwardKey, (pairMap.get(forwardKey) || 0) + cents);
+}
+
+function computeMetrics() {
+  const participantMap = buildParticipantMap();
+  const balances = new Map(state.participants.map((participant) => [participant.id, 0]));
+  const pairMap = new Map();
+
+  const enrichedExpenses = state.expenses.map((expense) => {
+    const breakdown = computeExpenseBreakdown(expense);
+    breakdown.included.forEach((allocation) => {
+      const shareCents = breakdown.shares.get(allocation.participantId) || 0;
+      const proxyId = allocation.proxyId || allocation.participantId;
+
+      if (proxyId !== expense.payerId) {
+        addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
+      }
+      if (proxyId !== allocation.participantId) {
+        addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
+      }
+    });
+
+    return {
+      ...expense,
+      breakdown,
+      payerName: participantMap.get(expense.payerId)?.name || "未知成員",
+    };
+  });
+
+  pairMap.forEach((amount, key) => {
+    const [debtorId, creditorId] = key.split("|");
+    balances.set(debtorId, (balances.get(debtorId) || 0) - amount);
+    balances.set(creditorId, (balances.get(creditorId) || 0) + amount);
+  });
+
+  const debtors = [];
+  const creditors = [];
+
+  balances.forEach((balance, participantId) => {
+    if (balance < 0) {
+      debtors.push({ participantId, amount: Math.abs(balance) });
+    } else if (balance > 0) {
+      creditors.push({ participantId, amount: balance });
+    }
+  });
+
+  debtors.sort((a, b) => b.amount - a.amount);
+  creditors.sort((a, b) => b.amount - a.amount);
+
+  const optimizedTransfers = [];
+  let debtorIndex = 0;
+  let creditorIndex = 0;
+
+  while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
+    const debtor = debtors[debtorIndex];
+    const creditor = creditors[creditorIndex];
+    const amount = Math.min(debtor.amount, creditor.amount);
+
+    optimizedTransfers.push({
+      fromId: debtor.participantId,
+      toId: creditor.participantId,
+      amount,
+    });
+
+    debtor.amount -= amount;
+    creditor.amount -= amount;
+
+    if (debtor.amount === 0) {
+      debtorIndex += 1;
+    }
+    if (creditor.amount === 0) {
+      creditorIndex += 1;
+    }
+  }
+
+  return {
+    totalSpentCents: enrichedExpenses.reduce(
+      (sum, expense) => sum + expense.breakdown.totalHkdCents,
+      0
+    ),
+    balances,
+    pairwiseDebts: Array.from(pairMap.entries()).map(([key, amount]) => {
+      const [fromId, toId] = key.split("|");
+      return {
+        fromId,
+        fromName: participantMap.get(fromId)?.name || "未知成員",
+        toId,
+        toName: participantMap.get(toId)?.name || "未知成員",
+        amount,
+      };
+    }),
+    optimizedTransfers,
+    enrichedExpenses,
+  };
+}
+
+function renderStats(metrics) {
+  participantCount.textContent = String(state.participants.length);
+  totalSpent.textContent = formatCurrencyFromCents(metrics.totalSpentCents);
+  expenseCount.textContent = String(state.expenses.length);
+  transferCount.textContent = String(metrics.optimizedTransfers.length);
+}
+
+function renderExpenses(metrics) {
+  expenseList.innerHTML = metrics.enrichedExpenses
+    .slice()
+    .reverse()
+    .map((expense) => {
+      const shares = expense.breakdown.included
+        .map((allocation) => {
+          const proxyName =
+            allocation.proxyId !== allocation.participantId
+              ? `，${getParticipantName(allocation.proxyId)}代付`
+              : "";
+          return `<span class="pill">${escapeHtml(
+            `${getParticipantName(allocation.participantId)} ${formatCurrencyFromCents(
+              expense.breakdown.shares.get(allocation.participantId) || 0
+            )}${proxyName}`
+          )}</span>`;
+        })
+        .join("");
+
       return `
-        <article class="prompt-card" data-card-id="${card.id}" tabindex="0">
-          <div class="card-topline">
-            <span class="category-tag">${textFor(category, "name")}</span>
-            <span class="page-tag">p.${card.page}</span>
+        <article class="expense-card">
+          <div class="expense-topline">
+            <strong>${escapeHtml(expense.title)}</strong>
+            <button type="button" data-remove-expense="${expense.id}">刪除</button>
           </div>
-          <h3>${textFor(card, "title")}</h3>
-          <p>${textFor(card, "summary")}</p>
-          <div class="tool-row">
-            ${card.tools
-              .map((tool) => `<span class="tool-pill">${tool}</span>`)
-              .join("")}
+          <div class="expense-meta">
+            <span>${escapeHtml(expense.payerName)} 先支付</span>
+            <span>${formatCurrencyValue(expense.amount, expense.currency)} · 轉 HKD 後 ${formatCurrencyFromCents(
+              expense.breakdown.totalHkdCents
+            )}</span>
           </div>
-          <div class="card-actions">
-            <button class="ghost-button ghost-button-small" type="button" data-copy-id="${card.id}">
-              ${state.language === "zh" ? "複製提示詞" : "Copy prompt"}
-            </button>
-            <button class="favorite-button ${isFavorite(card.id) ? "is-active" : ""}" type="button" data-favorite-id="${card.id}">
-              <span aria-hidden="true">${favoriteIcon(card.id)}</span>
-              <span>${actionLabel(card.id)}</span>
-            </button>
+          <div class="pill-row">
+            <span class="pill">${expense.splitMode === "equal" ? "平均分攤" : "指定金額"}</span>
+            <span class="pill">匯率 ${expense.rate.toFixed(3)}</span>
           </div>
+          <div class="pill-row">${shares}</div>
         </article>
       `;
     })
     .join("");
 
-  cardsGrid.querySelectorAll("[data-card-id]").forEach((cardNode) => {
-    const openCard = () => {
-      state.selectedId = cardNode.dataset.cardId;
-      renderDialog();
-      detailDialog.showModal();
-    };
-
-    cardNode.addEventListener("click", (event) => {
-      if (event.target.closest("[data-copy-id], [data-favorite-id]")) {
-        return;
-      }
-      openCard();
-    });
-
-    cardNode.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        if (event.target.closest("[data-copy-id], [data-favorite-id]")) {
-          return;
-        }
-        event.preventDefault();
-        openCard();
-      }
-    });
-  });
-
-  cardsGrid.querySelectorAll("[data-copy-id]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      copyPrompt(button.dataset.copyId);
-    });
-  });
-
-  cardsGrid.querySelectorAll("[data-favorite-id]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleFavorite(button.dataset.favoriteId);
+  expenseList.querySelectorAll("[data-remove-expense]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.expenses = state.expenses.filter((expense) => expense.id !== button.dataset.removeExpense);
+      saveState();
+      render();
     });
   });
 }
 
-function renderDialog() {
-  const card = promptAtlasData.cards.find((item) => item.id === state.selectedId);
-  if (!card) {
+function renderBalances(metrics) {
+  balanceList.innerHTML = state.participants
+    .map((participant) => {
+      const amount = metrics.balances.get(participant.id) || 0;
+      const className = amount > 0 ? "positive" : amount < 0 ? "negative" : "";
+      return `
+        <div class="summary-item ${className}">
+          <span>${escapeHtml(participant.name)}</span>
+          <strong>${amount === 0 ? "已平衡" : formatCurrencyFromCents(amount)}</strong>
+        </div>
+      `;
+    })
+    .join("");
+
+  owesList.innerHTML = metrics.pairwiseDebts
+    .map(
+      (debt) => `
+        <div class="summary-item">
+          <span>${escapeHtml(debt.fromName)} → ${escapeHtml(debt.toName)}</span>
+          <strong>${formatCurrencyFromCents(debt.amount)}</strong>
+        </div>
+      `
+    )
+    .join("");
+
+  settlementList.innerHTML = metrics.optimizedTransfers
+    .map(
+      (transfer) => `
+        <div class="summary-item">
+          <span>${escapeHtml(getParticipantName(transfer.fromId))} 還給 ${escapeHtml(
+            getParticipantName(transfer.toId)
+          )}</span>
+          <strong>${formatCurrencyFromCents(transfer.amount)}</strong>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function updateAllocationSummary() {
+  const draft = parseExpenseDraft();
+  const error = validateExpenseDraft(draft);
+  const included = draft.allocations.filter((allocation) => allocation.included);
+
+  if (error) {
+    allocationSummary.textContent = error;
+    allocationSummary.classList.add("is-error");
     return;
   }
 
-  const category = categoryMap.get(card.category);
+  if (draft.splitMode === "equal") {
+    const breakdown = computeExpenseBreakdown(draft);
+    const perPerson = included.length
+      ? formatCurrencyFromCents(
+          breakdown.shares.get(included[0]?.participantId || "") || breakdown.totalHkdCents
+        )
+      : formatCurrencyFromCents(0);
+    allocationSummary.textContent = `共 ${included.length} 人分攤，每人約 ${perPerson}。`;
+  } else {
+    const customTotal = included.reduce((sum, allocation) => sum + Number(allocation.share || 0), 0);
+    allocationSummary.textContent = `已填入 ${customTotal.toFixed(2)} ${draft.currency}，目標 ${draft.amount.toFixed(
+      2
+    )} ${draft.currency}。`;
+  }
 
-  dialogContent.innerHTML = `
-    <div class="dialog-meta">
-      <span class="category-tag">${textFor(category, "name")}</span>
-      <span class="page-tag">p.${card.page}</span>
-    </div>
-    <h2>${textFor(card, "title")}</h2>
-    <p class="dialog-summary">${textFor(card, "summary")}</p>
-    <div class="dialog-actions">
-      <button class="ghost-button" type="button" data-copy-id="${card.id}">
-        ${state.language === "zh" ? "複製提示詞" : "Copy prompt"}
-      </button>
-      <button class="favorite-button ${isFavorite(card.id) ? "is-active" : ""}" type="button" data-favorite-id="${card.id}">
-        <span aria-hidden="true">${favoriteIcon(card.id)}</span>
-        <span>${actionLabel(card.id)}</span>
-      </button>
-    </div>
-    <div class="dialog-grid">
-      <section>
-        <h3>${state.language === "zh" ? "PDF 原文內容" : "Exact PDF text"}</h3>
-        <p class="dialog-prompt">${textFor(card, "prompt")}</p>
-      </section>
-      <section>
-        <h3>${state.language === "zh" ? "建議工具" : "Suggested tools"}</h3>
-        <div class="tool-row">
-          ${card.tools.map((tool) => `<span class="tool-pill">${tool}</span>`).join("")}
-        </div>
-      </section>
-      <section>
-        <h3>${state.language === "zh" ? "搜尋關鍵字" : "Helpful keywords"}</h3>
-        <div class="tool-row">
-          ${card.keywords
-            .map((keyword) => `<span class="tool-pill">${keyword}</span>`)
-            .join("")}
-        </div>
-      </section>
-    </div>
-  `;
-
-  dialogContent.querySelector("[data-copy-id]").addEventListener("click", () => {
-    copyPrompt(card.id);
-  });
-  dialogContent.querySelector("[data-favorite-id]").addEventListener("click", () => {
-    toggleFavorite(card.id);
-  });
+  allocationSummary.classList.remove("is-error");
 }
 
-function renderLanguage() {
-  document.documentElement.lang = state.language === "zh" ? "zh-Hant" : "en";
-  languageToggle.textContent =
-    state.language === "zh" ? "Switch to English" : "切換中文";
+function resetExpenseForm() {
+  expenseForm.reset();
+  expenseCurrencyInput.value = "HKD";
+  splitModeInput.value = "equal";
+  defaultRateInput.value = String(state.defaultRate);
+  syncRateInputState();
+  renderParticipantControls();
+}
+
+function xmlCell(value, type = "String") {
+  if (type === "Number") {
+    return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`;
+  }
+  return `<Cell><Data ss:Type="String">${escapeHtml(value)}</Data></Cell>`;
+}
+
+function buildExcelWorkbook(metrics) {
+  const balanceRows = state.participants
+    .map((participant) => {
+      const balance = centsToNumber(metrics.balances.get(participant.id) || 0).toFixed(2);
+      return `<Row>${xmlCell(participant.name)}${xmlCell(balance, "Number")}</Row>`;
+    })
+    .join("");
+
+  const expenseRows = metrics.enrichedExpenses
+    .map((expense) => {
+      const participantSummary = expense.breakdown.included
+        .map((allocation) => {
+          const share = centsToNumber(expense.breakdown.shares.get(allocation.participantId) || 0).toFixed(2);
+          const proxyText =
+            allocation.proxyId !== allocation.participantId
+              ? `（${getParticipantName(allocation.proxyId)}代付）`
+              : "";
+          return `${getParticipantName(allocation.participantId)} ${share} HKD${proxyText}`;
+        })
+        .join(" / ");
+
+      return `<Row>
+        ${xmlCell(expense.title)}
+        ${xmlCell(expense.payerName)}
+        ${xmlCell(expense.currency)}
+        ${xmlCell(expense.amount.toFixed(2), "Number")}
+        ${xmlCell(expense.rate.toFixed(3), "Number")}
+        ${xmlCell(centsToNumber(expense.breakdown.totalHkdCents).toFixed(2), "Number")}
+        ${xmlCell(expense.splitMode === "equal" ? "平均分攤" : "指定金額")}
+        ${xmlCell(participantSummary)}
+      </Row>`;
+    })
+    .join("");
+
+  const debtRows = metrics.pairwiseDebts
+    .map(
+      (debt) =>
+        `<Row>${xmlCell(debt.fromName)}${xmlCell(debt.toName)}${xmlCell(
+          centsToNumber(debt.amount).toFixed(2),
+          "Number"
+        )}</Row>`
+    )
+    .join("");
+
+  const settlementRows = metrics.optimizedTransfers
+    .map(
+      (transfer) =>
+        `<Row>${xmlCell(getParticipantName(transfer.fromId))}${xmlCell(
+          getParticipantName(transfer.toId)
+        )}${xmlCell(centsToNumber(transfer.amount).toFixed(2), "Number")}</Row>`
+    )
+    .join("");
+
+  return `<?xml version="1.0"?>
+    <?mso-application progid="Excel.Sheet"?>
+    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+      xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+      xmlns:html="http://www.w3.org/TR/REC-html40">
+      <Worksheet ss:Name="Overview">
+        <Table>
+          <Row>${xmlCell("項目")}${xmlCell("數值")}</Row>
+          <Row>${xmlCell("參與人數")}${xmlCell(state.participants.length, "Number")}</Row>
+          <Row>${xmlCell("支出項目數")}${xmlCell(state.expenses.length, "Number")}</Row>
+          <Row>${xmlCell("總支出 HKD")}${xmlCell(centsToNumber(metrics.totalSpentCents).toFixed(2), "Number")}</Row>
+        </Table>
+      </Worksheet>
+      <Worksheet ss:Name="Balances">
+        <Table>
+          <Row>${xmlCell("參與人")}${xmlCell("淨額 HKD")}</Row>
+          ${balanceRows}
+        </Table>
+      </Worksheet>
+      <Worksheet ss:Name="Expenses">
+        <Table>
+          <Row>
+            ${xmlCell("項目名稱")}
+            ${xmlCell("支付人")}
+            ${xmlCell("貨幣")}
+            ${xmlCell("原始金額")}
+            ${xmlCell("匯率")}
+            ${xmlCell("折算 HKD")}
+            ${xmlCell("分攤方式")}
+            ${xmlCell("分攤明細")}
+          </Row>
+          ${expenseRows}
+        </Table>
+      </Worksheet>
+      <Worksheet ss:Name="Owes">
+        <Table>
+          <Row>${xmlCell("付款方")}${xmlCell("收款方")}${xmlCell("金額 HKD")}</Row>
+          ${debtRows}
+        </Table>
+      </Worksheet>
+      <Worksheet ss:Name="Settlements">
+        <Table>
+          <Row>${xmlCell("付款方")}${xmlCell("收款方")}${xmlCell("建議金額 HKD")}</Row>
+          ${settlementRows}
+        </Table>
+      </Worksheet>
+    </Workbook>`;
+}
+
+function downloadExcel() {
+  const metrics = computeMetrics();
+  const workbook = buildExcelWorkbook(metrics);
+  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "遊玩支出總覽.xls";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function render() {
-  renderLanguage();
-  renderStats();
-  renderTips();
-  renderFilters();
-  renderCards();
-  if (detailDialog.open && state.selectedId) {
-    renderDialog();
-  }
+  defaultRateInput.value = String(state.defaultRate);
+  renderParticipants();
+  renderParticipantControls();
+  const metrics = computeMetrics();
+  renderStats(metrics);
+  renderExpenses(metrics);
+  renderBalances(metrics);
 }
 
-languageToggle.addEventListener("click", () => {
-  state.language = state.language === "en" ? "zh" : "en";
+participantForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const name = participantNameInput.value.trim();
+  if (!name) {
+    showToast("請輸入參與人名稱。");
+    return;
+  }
+  if (state.participants.some((participant) => participant.name === name)) {
+    showToast("這個參與人已經存在。");
+    return;
+  }
+
+  state.participants.push({
+    id: uid("person"),
+    name,
+  });
+  saveState();
+  participantNameInput.value = "";
   render();
 });
 
-favoritesToggle.addEventListener("click", () => {
-  state.favoritesOnly = !state.favoritesOnly;
-  renderCards();
-  renderFilters();
-});
-
-searchInput.addEventListener("input", (event) => {
-  state.search = event.target.value;
-  renderCards();
-});
-
-detailDialog.addEventListener("click", (event) => {
-  const rect = detailDialog.getBoundingClientRect();
-  const inDialog =
-    rect.top <= event.clientY &&
-    event.clientY <= rect.top + rect.height &&
-    rect.left <= event.clientX &&
-    event.clientX <= rect.left + rect.width;
-
-  if (!inDialog) {
-    detailDialog.close();
+defaultRateInput.addEventListener("change", () => {
+  const nextRate = Number(defaultRateInput.value);
+  if (nextRate > 0) {
+    state.defaultRate = nextRate;
+    saveState();
+    if (expenseCurrencyInput.value === "RMB") {
+      expenseRateInput.value = String(nextRate);
+    }
+    showToast("已更新預設匯率。");
   }
 });
 
+expenseCurrencyInput.addEventListener("change", () => {
+  syncRateInputState();
+  updateAllocationSummary();
+});
+
+splitModeInput.addEventListener("change", renderAllocationRows);
+expensePayerInput.addEventListener("change", renderAllocationRows);
+expenseAmountInput.addEventListener("input", updateAllocationSummary);
+expenseRateInput.addEventListener("input", updateAllocationSummary);
+
+expenseForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const draft = parseExpenseDraft();
+  const error = validateExpenseDraft(draft);
+
+  if (error) {
+    allocationSummary.textContent = error;
+    allocationSummary.classList.add("is-error");
+    showToast(error);
+    return;
+  }
+
+  state.expenses.push({
+    id: uid("expense"),
+    title: draft.title,
+    amount: draft.amount,
+    currency: draft.currency,
+    payerId: draft.payerId,
+    splitMode: draft.splitMode,
+    rate: draft.rate,
+    allocations: draft.allocations.map((allocation) => ({
+      participantId: allocation.participantId,
+      included: allocation.included,
+      share: Number(allocation.share || 0),
+      proxyId: allocation.proxyId || allocation.participantId,
+    })),
+  });
+
+  saveState();
+  resetExpenseForm();
+  render();
+  showToast("支出項目已加入。");
+});
+
+exportButton.addEventListener("click", () => {
+  if (!state.expenses.length) {
+    showToast("請先建立至少一筆支出後再匯出。");
+    return;
+  }
+  downloadExcel();
+});
+
+resetButton.addEventListener("click", () => {
+  const confirmed = window.confirm("這會清除全部參與人與支出紀錄，確定要繼續嗎？");
+  if (!confirmed) {
+    return;
+  }
+  state.participants = [];
+  state.expenses = [];
+  state.defaultRate = 1.08;
+  saveState();
+  resetExpenseForm();
+  render();
+  showToast("資料已清空。");
+});
+
+syncRateInputState();
+resetExpenseForm();
 render();
