@@ -396,6 +396,35 @@ select:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.summary-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: -8px 0 16px;
+}
+
+.summary-toggle input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+}
+
+.summary-toggle span {
+  flex: 1;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.summary-grid > div {
+  min-width: 0;
+}
+
+.summary-item span,
+.summary-item strong {
+  word-break: break-word;
+}
+
 .summary-item {
   padding: 14px 16px;
 }

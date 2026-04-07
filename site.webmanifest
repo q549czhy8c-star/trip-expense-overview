@@ -1,15 +1,15 @@
 {
-  "name": "遊玩支出總覽",
-  "short_name": "支出總覽",
+  "name": "玩樂開支",
+  "short_name": "玩樂開支",
   "description": "多人遊玩支出分帳工具，支援 RMB 轉 HKD、代付與 Excel 匯出。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f3efe7",
-  "theme_color": "#176b87",
+  "background_color": "#f3f6fb",
+  "theme_color": "#1c86c8",
   "icons": [
     {
-      "src": "./icon.svg",
+      "src": "./assets/icons/logo-circle.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

@@ -20,9 +20,11 @@ const expenseRateInput = document.querySelector("#expenseRate");
 const allocationRows = document.querySelector("#allocationRows");
 const allocationSummary = document.querySelector("#allocationSummary");
 const expenseList = document.querySelector("#expenseList");
+const clearExpensesButton = document.querySelector("#clearExpensesButton");
 const balanceList = document.querySelector("#balanceList");
 const owesList = document.querySelector("#owesList");
 const settlementList = document.querySelector("#settlementList");
+const familyModeToggle = document.querySelector("#familyModeToggle");
 const exportButton = document.querySelector("#exportButton");
 const resetButton = document.querySelector("#resetButton");
 const toast = document.querySelector("#toast");
@@ -32,10 +34,11 @@ function loadState() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     if (parsed && Array.isArray(parsed.participants) && Array.isArray(parsed.expenses)) {
-      return {
+        return {
         participants: parsed.participants,
         expenses: parsed.expenses,
         defaultRate: Number(parsed.defaultRate) > 0 ? Number(parsed.defaultRate) : 1.08,
+        familyModeEnabled: Boolean(parsed.familyModeEnabled),
       };
     }
   } catch {
@@ -46,6 +49,7 @@ function loadState() {
     participants: [],
     expenses: [],
     defaultRate: 1.08,
+    familyModeEnabled: false,
   };
 }
 
@@ -131,12 +135,13 @@ function getActiveAllocationDraft() {
   return selectedParticipants;
 }
 
-function syncRateInputState() {
+function syncRateInputState(options = {}) {
+  const { forceDefaultRate = false } = options;
   const isRmb = expenseCurrencyInput.value === "RMB";
   expenseRateInput.disabled = !isRmb;
   if (!isRmb) {
     expenseRateInput.value = "1";
-  } else if (!Number(expenseRateInput.value)) {
+  } else if (forceDefaultRate || !Number(expenseRateInput.value)) {
     expenseRateInput.value = String(state.defaultRate);
   }
 }
@@ -362,7 +367,16 @@ function addPairDebt(pairMap, debtorId, creditorId, cents) {
   pairMap.set(forwardKey, (pairMap.get(forwardKey) || 0) + cents);
 }
 
-function computeMetrics() {
+function resolveProxyId(allocation, participantMap) {
+  const candidate = allocation.proxyId || allocation.participantId;
+  if (participantMap.has(candidate)) {
+    return candidate;
+  }
+  return allocation.participantId;
+}
+
+function computeMetrics(options = {}) {
+  const { familyModeEnabled = false } = options;
   const participantMap = buildParticipantMap();
   const balances = new Map(state.participants.map((participant) => [participant.id, 0]));
   const pairMap = new Map();
@@ -371,13 +385,15 @@ function computeMetrics() {
     const breakdown = computeExpenseBreakdown(expense);
     breakdown.included.forEach((allocation) => {
       const shareCents = breakdown.shares.get(allocation.participantId) || 0;
-      const proxyId = allocation.proxyId || allocation.participantId;
+      const proxyId = resolveProxyId(allocation, participantMap);
 
-      if (proxyId !== expense.payerId) {
+      if (familyModeEnabled) {
         addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
-      }
-      if (proxyId !== allocation.participantId) {
-        addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
+      } else {
+        addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
+        if (proxyId !== allocation.participantId) {
+          addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
+        }
       }
     });
 
@@ -440,16 +456,18 @@ function computeMetrics() {
       0
     ),
     balances,
-    pairwiseDebts: Array.from(pairMap.entries()).map(([key, amount]) => {
-      const [fromId, toId] = key.split("|");
-      return {
-        fromId,
-        fromName: participantMap.get(fromId)?.name || "未知成員",
-        toId,
-        toName: participantMap.get(toId)?.name || "未知成員",
-        amount,
-      };
-    }),
+    pairwiseDebts: Array.from(pairMap.entries())
+      .map(([key, amount]) => {
+        const [fromId, toId] = key.split("|");
+        return {
+          fromId,
+          fromName: participantMap.get(fromId)?.name || "未知成員",
+          toId,
+          toName: participantMap.get(toId)?.name || "未知成員",
+          amount,
+        };
+      })
+      .sort((a, b) => b.amount - a.amount),
     optimizedTransfers,
     enrichedExpenses,
   };
@@ -589,125 +607,107 @@ function resetExpenseForm() {
   renderParticipantControls();
 }
 
-function xmlCell(value, type = "String") {
-  if (type === "Number") {
-    return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`;
-  }
-  return `<Cell><Data ss:Type="String">${escapeHtml(value)}</Data></Cell>`;
+function csvCell(value) {
+  const normalized = String(value ?? "").replaceAll('"', '""');
+  return `"${normalized}"`;
 }
 
-function buildExcelWorkbook(metrics) {
-  const balanceRows = state.participants
-    .map((participant) => {
-      const balance = centsToNumber(metrics.balances.get(participant.id) || 0).toFixed(2);
-      return `<Row>${xmlCell(participant.name)}${xmlCell(balance, "Number")}</Row>`;
-    })
-    .join("");
+function buildExportCsv(metrics) {
+  const lines = [];
 
-  const expenseRows = metrics.enrichedExpenses
-    .map((expense) => {
-      const participantSummary = expense.breakdown.included
-        .map((allocation) => {
-          const share = centsToNumber(expense.breakdown.shares.get(allocation.participantId) || 0).toFixed(2);
-          const proxyText =
-            allocation.proxyId !== allocation.participantId
-              ? `（${getParticipantName(allocation.proxyId)}代付）`
-              : "";
-          return `${getParticipantName(allocation.participantId)} ${share} HKD${proxyText}`;
-        })
-        .join(" / ");
-
-      return `<Row>
-        ${xmlCell(expense.title)}
-        ${xmlCell(expense.payerName)}
-        ${xmlCell(expense.currency)}
-        ${xmlCell(expense.amount.toFixed(2), "Number")}
-        ${xmlCell(expense.rate.toFixed(3), "Number")}
-        ${xmlCell(centsToNumber(expense.breakdown.totalHkdCents).toFixed(2), "Number")}
-        ${xmlCell(expense.splitMode === "equal" ? "平均分攤" : "指定金額")}
-        ${xmlCell(participantSummary)}
-      </Row>`;
-    })
-    .join("");
-
-  const debtRows = metrics.pairwiseDebts
-    .map(
-      (debt) =>
-        `<Row>${xmlCell(debt.fromName)}${xmlCell(debt.toName)}${xmlCell(
-          centsToNumber(debt.amount).toFixed(2),
-          "Number"
-        )}</Row>`
+  lines.push("行程支出總覽");
+  lines.push(
+    [csvCell("參與人數"), csvCell(state.participants.length), csvCell("支出項目數"), csvCell(state.expenses.length)].join(
+      ","
     )
-    .join("");
+  );
+  lines.push(
+    [csvCell("總支出 HKD"), csvCell(centsToNumber(metrics.totalSpentCents).toFixed(2)), csvCell("家庭模式"), csvCell(state.familyModeEnabled ? "開啟" : "關閉")].join(",")
+  );
+  lines.push("");
 
-  const settlementRows = metrics.optimizedTransfers
-    .map(
-      (transfer) =>
-        `<Row>${xmlCell(getParticipantName(transfer.fromId))}${xmlCell(
-          getParticipantName(transfer.toId)
-        )}${xmlCell(centsToNumber(transfer.amount).toFixed(2), "Number")}</Row>`
-    )
-    .join("");
+  lines.push("分帳明細");
+  lines.push(
+    [
+      "項目名稱",
+      "支付人",
+      "分攤對象",
+      "代付人",
+      "貨幣",
+      "原始金額",
+      "匯率",
+      "折算 HKD",
+      "此人分攤 HKD",
+      "分攤方式",
+    ]
+      .map(csvCell)
+      .join(",")
+  );
 
-  return `<?xml version="1.0"?>
-    <?mso-application progid="Excel.Sheet"?>
-    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-      xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:x="urn:schemas-microsoft-com:office:excel"
-      xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
-      xmlns:html="http://www.w3.org/TR/REC-html40">
-      <Worksheet ss:Name="Overview">
-        <Table>
-          <Row>${xmlCell("項目")}${xmlCell("數值")}</Row>
-          <Row>${xmlCell("參與人數")}${xmlCell(state.participants.length, "Number")}</Row>
-          <Row>${xmlCell("支出項目數")}${xmlCell(state.expenses.length, "Number")}</Row>
-          <Row>${xmlCell("總支出 HKD")}${xmlCell(centsToNumber(metrics.totalSpentCents).toFixed(2), "Number")}</Row>
-        </Table>
-      </Worksheet>
-      <Worksheet ss:Name="Balances">
-        <Table>
-          <Row>${xmlCell("參與人")}${xmlCell("淨額 HKD")}</Row>
-          ${balanceRows}
-        </Table>
-      </Worksheet>
-      <Worksheet ss:Name="Expenses">
-        <Table>
-          <Row>
-            ${xmlCell("項目名稱")}
-            ${xmlCell("支付人")}
-            ${xmlCell("貨幣")}
-            ${xmlCell("原始金額")}
-            ${xmlCell("匯率")}
-            ${xmlCell("折算 HKD")}
-            ${xmlCell("分攤方式")}
-            ${xmlCell("分攤明細")}
-          </Row>
-          ${expenseRows}
-        </Table>
-      </Worksheet>
-      <Worksheet ss:Name="Owes">
-        <Table>
-          <Row>${xmlCell("付款方")}${xmlCell("收款方")}${xmlCell("金額 HKD")}</Row>
-          ${debtRows}
-        </Table>
-      </Worksheet>
-      <Worksheet ss:Name="Settlements">
-        <Table>
-          <Row>${xmlCell("付款方")}${xmlCell("收款方")}${xmlCell("建議金額 HKD")}</Row>
-          ${settlementRows}
-        </Table>
-      </Worksheet>
-    </Workbook>`;
+  metrics.enrichedExpenses.forEach((expense) => {
+    expense.breakdown.included.forEach((allocation) => {
+      const participantName = getParticipantName(allocation.participantId);
+      const proxyName = getParticipantName(allocation.proxyId);
+      const shareHkd = centsToNumber(expense.breakdown.shares.get(allocation.participantId) || 0).toFixed(2);
+      lines.push(
+        [
+          expense.title,
+          expense.payerName,
+          participantName,
+          allocation.proxyId === allocation.participantId ? "本人支付" : proxyName,
+          expense.currency,
+          expense.amount.toFixed(2),
+          expense.rate.toFixed(3),
+          centsToNumber(expense.breakdown.totalHkdCents).toFixed(2),
+          shareHkd,
+          expense.splitMode === "equal" ? "平均分攤" : "指定金額",
+        ]
+          .map(csvCell)
+          .join(",")
+      );
+    });
+  });
+
+  lines.push("");
+  lines.push("各人淨額");
+  lines.push([csvCell("參與人"), csvCell("淨額 HKD")].join(","));
+  state.participants.forEach((participant) => {
+    lines.push(
+      [csvCell(participant.name), csvCell(centsToNumber(metrics.balances.get(participant.id) || 0).toFixed(2))].join(",")
+    );
+  });
+
+  lines.push("");
+  lines.push("誰欠誰");
+  lines.push([csvCell("付款方"), csvCell("收款方"), csvCell("金額 HKD")].join(","));
+  metrics.pairwiseDebts.forEach((debt) => {
+    lines.push([csvCell(debt.fromName), csvCell(debt.toName), csvCell(centsToNumber(debt.amount).toFixed(2))].join(","));
+  });
+
+  lines.push("");
+  lines.push("建議轉帳");
+  lines.push([csvCell("付款方"), csvCell("收款方"), csvCell("建議金額 HKD")].join(","));
+  metrics.optimizedTransfers.forEach((transfer) => {
+    lines.push(
+      [
+        csvCell(getParticipantName(transfer.fromId)),
+        csvCell(getParticipantName(transfer.toId)),
+        csvCell(centsToNumber(transfer.amount).toFixed(2)),
+      ].join(",")
+    );
+  });
+
+  return `\uFEFF${lines.join("\n")}`;
 }
 
 function downloadExcel() {
-  const metrics = computeMetrics();
-  const workbook = buildExcelWorkbook(metrics);
-  const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const metrics = computeMetrics({ familyModeEnabled: state.familyModeEnabled });
+  const csv = buildExportCsv(metrics);
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "遊玩支出總覽.xls";
+  link.download = "遊玩支出總覽.csv";
   document.body.append(link);
   link.click();
   link.remove();
@@ -716,9 +716,10 @@ function downloadExcel() {
 
 function render() {
   defaultRateInput.value = String(state.defaultRate);
+  familyModeToggle.checked = state.familyModeEnabled;
   renderParticipants();
   renderParticipantControls();
-  const metrics = computeMetrics();
+  const metrics = computeMetrics({ familyModeEnabled: state.familyModeEnabled });
   renderStats(metrics);
   renderExpenses(metrics);
   renderBalances(metrics);
@@ -758,7 +759,7 @@ defaultRateInput.addEventListener("change", () => {
 });
 
 expenseCurrencyInput.addEventListener("change", () => {
-  syncRateInputState();
+  syncRateInputState({ forceDefaultRate: expenseCurrencyInput.value === "RMB" });
   updateAllocationSummary();
 });
 
@@ -766,6 +767,11 @@ splitModeInput.addEventListener("change", renderAllocationRows);
 expensePayerInput.addEventListener("change", renderAllocationRows);
 expenseAmountInput.addEventListener("input", updateAllocationSummary);
 expenseRateInput.addEventListener("input", updateAllocationSummary);
+familyModeToggle.addEventListener("change", () => {
+  state.familyModeEnabled = familyModeToggle.checked;
+  saveState();
+  render();
+});
 
 expenseForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -809,6 +815,24 @@ exportButton.addEventListener("click", () => {
   downloadExcel();
 });
 
+clearExpensesButton.addEventListener("click", () => {
+  if (!state.expenses.length) {
+    showToast("目前沒有支出資料可清除。");
+    return;
+  }
+
+  const confirmed = window.confirm("這會清除所有支出紀錄，確定要繼續嗎？");
+  if (!confirmed) {
+    return;
+  }
+
+  state.expenses = [];
+  saveState();
+  resetExpenseForm();
+  render();
+  showToast("所有支出資料已清除。");
+});
+
 resetButton.addEventListener("click", () => {
   const confirmed = window.confirm("這會清除全部參與人與支出紀錄，確定要繼續嗎？");
   if (!confirmed) {
@@ -817,6 +841,7 @@ resetButton.addEventListener("click", () => {
   state.participants = [];
   state.expenses = [];
   state.defaultRate = 1.08;
+  state.familyModeEnabled = false;
   saveState();
   resetExpenseForm();
   render();

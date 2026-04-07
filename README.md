@@ -54,3 +54,13 @@ python3 -m http.server 4173
 ```
 
 然後開啟 `http://localhost:4173`。
+
+## 加入主畫面圖示（PWA）
+
+本專案已加入 `site.webmanifest` 與主畫面圖示設定，預設使用純文字 SVG 檔案 `assets/icons/logo-circle.svg`，避免必須提交 PNG/ICO 等二進位圖檔。
+
+若要替換成你提供的圓形 Logo，直接覆蓋下列檔案即可：
+
+- `assets/icons/logo-circle.svg`
+
+> 若未來可接受二進位圖檔，建議同時準備 `192x192` 與 `512x512` 的 PNG，並在 `site.webmanifest` 的 `icons` 陣列中新增對應條目，以獲得最佳 Android 與舊版 iOS 主畫面相容性。
