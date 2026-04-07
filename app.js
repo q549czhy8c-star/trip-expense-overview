@@ -20,6 +20,7 @@ const expenseRateInput = document.querySelector("#expenseRate");
 const allocationRows = document.querySelector("#allocationRows");
 const allocationSummary = document.querySelector("#allocationSummary");
 const expenseList = document.querySelector("#expenseList");
+const clearExpensesButton = document.querySelector("#clearExpensesButton");
 const balanceList = document.querySelector("#balanceList");
 const owesList = document.querySelector("#owesList");
 const settlementList = document.querySelector("#settlementList");
@@ -807,6 +808,24 @@ exportButton.addEventListener("click", () => {
     return;
   }
   downloadExcel();
+});
+
+clearExpensesButton.addEventListener("click", () => {
+  if (!state.expenses.length) {
+    showToast("目前沒有支出資料可清除。");
+    return;
+  }
+
+  const confirmed = window.confirm("這會清除所有支出紀錄，確定要繼續嗎？");
+  if (!confirmed) {
+    return;
+  }
+
+  state.expenses = [];
+  saveState();
+  resetExpenseForm();
+  render();
+  showToast("所有支出資料已清除。");
 });
 
 resetButton.addEventListener("click", () => {
