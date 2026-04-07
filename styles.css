@@ -396,6 +396,10 @@ select:focus {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.summary-toggle {
+  margin: -8px 0 16px;
+}
+
 .summary-item {
   padding: 14px 16px;
 }
