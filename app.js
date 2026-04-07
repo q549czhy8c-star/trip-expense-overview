@@ -34,7 +34,7 @@ function loadState() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
     if (parsed && Array.isArray(parsed.participants) && Array.isArray(parsed.expenses)) {
-      return {
+        return {
         participants: parsed.participants,
         expenses: parsed.expenses,
         defaultRate: Number(parsed.defaultRate) > 0 ? Number(parsed.defaultRate) : 1.08,
@@ -366,6 +366,14 @@ function addPairDebt(pairMap, debtorId, creditorId, cents) {
   pairMap.set(forwardKey, (pairMap.get(forwardKey) || 0) + cents);
 }
 
+function resolveProxyId(allocation, participantMap) {
+  const candidate = allocation.proxyId || allocation.participantId;
+  if (participantMap.has(candidate)) {
+    return candidate;
+  }
+  return allocation.participantId;
+}
+
 function computeMetrics(options = {}) {
   const { familyModeEnabled = false } = options;
   const participantMap = buildParticipantMap();
@@ -376,13 +384,15 @@ function computeMetrics(options = {}) {
     const breakdown = computeExpenseBreakdown(expense);
     breakdown.included.forEach((allocation) => {
       const shareCents = breakdown.shares.get(allocation.participantId) || 0;
-      const proxyId = allocation.proxyId || allocation.participantId;
+      const proxyId = resolveProxyId(allocation, participantMap);
 
-      if (proxyId !== expense.payerId) {
+      if (familyModeEnabled) {
         addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
-      }
-      if (!familyModeEnabled && proxyId !== allocation.participantId) {
-        addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
+      } else {
+        addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
+        if (proxyId !== allocation.participantId) {
+          addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
+        }
       }
     });
 
@@ -445,16 +455,18 @@ function computeMetrics(options = {}) {
       0
     ),
     balances,
-    pairwiseDebts: Array.from(pairMap.entries()).map(([key, amount]) => {
-      const [fromId, toId] = key.split("|");
-      return {
-        fromId,
-        fromName: participantMap.get(fromId)?.name || "未知成員",
-        toId,
-        toName: participantMap.get(toId)?.name || "未知成員",
-        amount,
-      };
-    }),
+    pairwiseDebts: Array.from(pairMap.entries())
+      .map(([key, amount]) => {
+        const [fromId, toId] = key.split("|");
+        return {
+          fromId,
+          fromName: participantMap.get(fromId)?.name || "未知成員",
+          toId,
+          toName: participantMap.get(toId)?.name || "未知成員",
+          amount,
+        };
+      })
+      .sort((a, b) => b.amount - a.amount),
     optimizedTransfers,
     enrichedExpenses,
   };
