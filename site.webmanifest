@@ -1,0 +1,17 @@
+{
+  "name": "玩樂開支",
+  "short_name": "玩樂開支",
+  "description": "多人遊玩支出分帳工具",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f6fb",
+  "theme_color": "#1c86c8",
+  "icons": [
+    {
+      "src": "./assets/icons/logo-circle.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
