@@ -135,12 +135,13 @@ function getActiveAllocationDraft() {
   return selectedParticipants;
 }
 
-function syncRateInputState() {
+function syncRateInputState(options = {}) {
+  const { forceDefaultRate = false } = options;
   const isRmb = expenseCurrencyInput.value === "RMB";
   expenseRateInput.disabled = !isRmb;
   if (!isRmb) {
     expenseRateInput.value = "1";
-  } else if (!Number(expenseRateInput.value)) {
+  } else if (forceDefaultRate || !Number(expenseRateInput.value)) {
     expenseRateInput.value = String(state.defaultRate);
   }
 }
@@ -777,7 +778,7 @@ defaultRateInput.addEventListener("change", () => {
 });
 
 expenseCurrencyInput.addEventListener("change", () => {
-  syncRateInputState();
+  syncRateInputState({ forceDefaultRate: expenseCurrencyInput.value === "RMB" });
   updateAllocationSummary();
 });
 
