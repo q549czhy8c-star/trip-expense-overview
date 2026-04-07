@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">玩樂開支 App 圖示</title>
+  <desc id="desc">圓形背景搭配玩字，作為加入主畫面的圖示。</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1fb6c9"/>
+      <stop offset="55%" stop-color="#1e8fc8"/>
+      <stop offset="100%" stop-color="#2fbf5b"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ff8a3d"/>
+      <stop offset="100%" stop-color="#ffd15b"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="246" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="216" fill="none" stroke="url(#ring)" stroke-width="20"/>
+  <circle cx="256" cy="256" r="168" fill="#ffffff" fill-opacity="0.95"/>
+  <text x="256" y="286" text-anchor="middle" font-size="170" font-weight="800" font-family="'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif" fill="#0f4c81">玩</text>
+</svg>
