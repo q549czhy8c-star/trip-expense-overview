@@ -24,6 +24,7 @@ const clearExpensesButton = document.querySelector("#clearExpensesButton");
 const balanceList = document.querySelector("#balanceList");
 const owesList = document.querySelector("#owesList");
 const settlementList = document.querySelector("#settlementList");
+const familyModeToggle = document.querySelector("#familyModeToggle");
 const exportButton = document.querySelector("#exportButton");
 const resetButton = document.querySelector("#resetButton");
 const toast = document.querySelector("#toast");
@@ -37,6 +38,7 @@ function loadState() {
         participants: parsed.participants,
         expenses: parsed.expenses,
         defaultRate: Number(parsed.defaultRate) > 0 ? Number(parsed.defaultRate) : 1.08,
+        familyModeEnabled: Boolean(parsed.familyModeEnabled),
       };
     }
   } catch {
@@ -47,6 +49,7 @@ function loadState() {
     participants: [],
     expenses: [],
     defaultRate: 1.08,
+    familyModeEnabled: false,
   };
 }
 
@@ -363,7 +366,8 @@ function addPairDebt(pairMap, debtorId, creditorId, cents) {
   pairMap.set(forwardKey, (pairMap.get(forwardKey) || 0) + cents);
 }
 
-function computeMetrics() {
+function computeMetrics(options = {}) {
+  const { familyModeEnabled = false } = options;
   const participantMap = buildParticipantMap();
   const balances = new Map(state.participants.map((participant) => [participant.id, 0]));
   const pairMap = new Map();
@@ -377,7 +381,7 @@ function computeMetrics() {
       if (proxyId !== expense.payerId) {
         addPairDebt(pairMap, proxyId, expense.payerId, shareCents);
       }
-      if (proxyId !== allocation.participantId) {
+      if (!familyModeEnabled && proxyId !== allocation.participantId) {
         addPairDebt(pairMap, allocation.participantId, proxyId, shareCents);
       }
     });
@@ -663,6 +667,7 @@ function buildExcelWorkbook(metrics) {
           <Row>${xmlCell("參與人數")}${xmlCell(state.participants.length, "Number")}</Row>
           <Row>${xmlCell("支出項目數")}${xmlCell(state.expenses.length, "Number")}</Row>
           <Row>${xmlCell("總支出 HKD")}${xmlCell(centsToNumber(metrics.totalSpentCents).toFixed(2), "Number")}</Row>
+          <Row>${xmlCell("家庭支出模式")}${xmlCell(state.familyModeEnabled ? "開啟" : "關閉")}</Row>
         </Table>
       </Worksheet>
       <Worksheet ss:Name="Balances">
@@ -702,7 +707,7 @@ function buildExcelWorkbook(metrics) {
 }
 
 function downloadExcel() {
-  const metrics = computeMetrics();
+  const metrics = computeMetrics({ familyModeEnabled: state.familyModeEnabled });
   const workbook = buildExcelWorkbook(metrics);
   const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -717,9 +722,10 @@ function downloadExcel() {
 
 function render() {
   defaultRateInput.value = String(state.defaultRate);
+  familyModeToggle.checked = state.familyModeEnabled;
   renderParticipants();
   renderParticipantControls();
-  const metrics = computeMetrics();
+  const metrics = computeMetrics({ familyModeEnabled: state.familyModeEnabled });
   renderStats(metrics);
   renderExpenses(metrics);
   renderBalances(metrics);
@@ -767,6 +773,11 @@ splitModeInput.addEventListener("change", renderAllocationRows);
 expensePayerInput.addEventListener("change", renderAllocationRows);
 expenseAmountInput.addEventListener("input", updateAllocationSummary);
 expenseRateInput.addEventListener("input", updateAllocationSummary);
+familyModeToggle.addEventListener("change", () => {
+  state.familyModeEnabled = familyModeToggle.checked;
+  saveState();
+  render();
+});
 
 expenseForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -836,6 +847,7 @@ resetButton.addEventListener("click", () => {
   state.participants = [];
   state.expenses = [];
   state.defaultRate = 1.08;
+  state.familyModeEnabled = false;
   saveState();
   resetExpenseForm();
   render();
